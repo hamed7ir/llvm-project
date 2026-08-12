@@ -39,6 +39,16 @@ class LLVM_ABI LoadStoreVec final : public RegionPass {
   void tryEraseDeadInstrs(ArrayRef<Instruction *> Stores,
                           ArrayRef<Value *> Operands);
 
+  /// Erases each of \p Loads that has no remaining uses, along with any
+  /// pointer-operand GEP that becomes dead as a result.
+  void tryEraseDeadLoads(ArrayRef<Instruction *> Loads);
+
+  /// Builds a single vector load out of the loads in \p Operands. \Returns
+  /// the new load, or nullptr if \p Operands are not a vectorizable load
+  /// chain. Used only by vectorizeLoads(), for a load-kind seed slice.
+  Value *createVectorLoad(ArrayRef<Value *> Operands, Scheduler &Sched,
+                          const Analyses &A, Context &Ctx);
+
   /// Vectorizes the store chain \p Bndl by packing its stored values into a
   /// single vector value and storing that instead. Direction-agnostic: it
   /// doesn't matter whether a stored value is a load, a constant, or an
@@ -65,6 +75,22 @@ class LLVM_ABI LoadStoreVec final : public RegionPass {
   ArrayRef<Instruction *> findLegalStoreRun(ArrayRef<Instruction *> Bndl,
                                             unsigned Start, Scheduler &Sched,
                                             const Analyses &A);
+
+  /// Tries to vectorize the load chain \p Bndl into a single vector load,
+  /// replacing each original load's uses with an extract from it.
+  /// \Returns whether it succeeded.
+  bool vectorizeLoads(ArrayRef<Instruction *> Bndl, Region &Rgn,
+                      Scheduler &Sched, const Analyses &A);
+
+  /// \Returns true if \p Run is a consecutive load chain that \p Sched can
+  /// schedule together.
+  bool isLegalLoadRun(ArrayRef<Instruction *> Run, Scheduler &Sched,
+                      const Analyses &A);
+
+  /// Load-chain counterpart of findLegalStoreRun().
+  ArrayRef<Instruction *> findLegalLoadRun(ArrayRef<Instruction *> Bndl,
+                                           unsigned Start, Scheduler &Sched,
+                                           const Analyses &A);
 
 public:
   LoadStoreVec(StringRef AuxArg) : RegionPass("load-store-vec") {

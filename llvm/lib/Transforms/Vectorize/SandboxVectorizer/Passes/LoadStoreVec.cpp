@@ -67,6 +67,20 @@ void LoadStoreVec::tryEraseDeadInstrs(ArrayRef<Instruction *> Stores,
       PtrI->eraseFromParent();
 }
 
+void LoadStoreVec::tryEraseDeadLoads(ArrayRef<Instruction *> Loads) {
+  SmallPtrSet<Instruction *, 8> DeadCandidates;
+  for (auto *LI : Loads) {
+    if (auto *PtrI =
+            dyn_cast<Instruction>(cast<LoadInst>(LI)->getPointerOperand()))
+      DeadCandidates.insert(PtrI);
+    if (LI->hasNUses(0))
+      LI->eraseFromParent();
+  }
+  for (auto *PtrI : DeadCandidates)
+    if (!PtrI->hasNUsesOrMore(1))
+      PtrI->eraseFromParent();
+}
+
 /// \Returns the narrowest scalar element type across \p Operands, mirroring
 /// VecUtils::getCombinedVectorTypeFor() but for arbitrary Values rather than
 /// only Instructions: a store's operands can be Constants, Arguments, or any
@@ -197,6 +211,29 @@ static Value *packOperands(ArrayRef<Value *> Operands, const DataLayout &DL,
   return LastInsert;
 }
 
+Value *LoadStoreVec::createVectorLoad(ArrayRef<Value *> Operands,
+                                      Scheduler &Sched, const Analyses &A,
+                                      Context &Ctx) {
+  // TODO: Try to avoid the extra copy to an instruction vector.
+  SmallVector<Instruction *, 8> Loads;
+  Loads.reserve(Operands.size());
+  for (Value *Op : Operands)
+    Loads.push_back(cast<Instruction>(Op));
+
+  if (!VecUtils::areConsecutive<LoadInst, Instruction>(
+          Loads, A.getScalarEvolution(), *DL))
+    return nullptr;
+  if (!canVectorize(Loads, Sched))
+    return nullptr;
+
+  Type *Ty = VecUtils::getCombinedVectorTypeFor(Loads, *DL);
+  Value *LdPtr = cast<LoadInst>(Loads[0])->getPointerOperand();
+  // TODO: Compute alignment.
+  Align LdAlign(1);
+  auto LdWhereIt = std::next(VecUtils::getLowest(Loads)->getIterator());
+  return LoadInst::create(Ty, LdPtr, LdAlign, LdWhereIt, Ctx, "VecIinitL");
+}
+
 /// Accepts the transaction if vectorizing was profitable, reverts it otherwise.
 /// \Returns true if the transaction was accepted.
 static bool acceptIfProfitable(Context &Ctx, const ScoreBoard &SB,
@@ -274,12 +311,100 @@ LoadStoreVec::findLegalStoreRun(ArrayRef<Instruction *> Bndl, unsigned Start,
   return {};
 }
 
+bool LoadStoreVec::vectorizeLoads(ArrayRef<Instruction *> Bndl, Region &Rgn,
+                                  Scheduler &Sched, const Analyses &A) {
+  Function &F = *Bndl[0]->getParent()->getParent();
+  auto &Ctx = F.getContext();
+
+  const auto &SB = cast<RegionWithScore>(Rgn).getScoreboard();
+  InstructionCost CostBefore = SB.getAfterCost() - SB.getBeforeCost();
+
+  Ctx.save();
+
+  SmallVector<Value *, 8> Operands(Bndl.begin(), Bndl.end());
+  Value *VecLoad = createVectorLoad(Operands, Sched, A, Ctx);
+  if (VecLoad == nullptr) {
+    Ctx.accept();
+    return false;
+  }
+
+  // Unlike a load that merely feeds a store (see vectorizeStores(), via
+  // packOperands()), a top-level seed load can have arbitrary uses, so we
+  // can't just discard the originals: replace each one with an extract from
+  // the new vector load. That requires every original load's element type to
+  // exactly match the combined vector's element type (see VecUtils::unpack());
+  // isLegalLoadRun() should already guarantee this, so re-check defensively
+  // rather than trust it blindly.
+  Type *VecElemTy = cast<FixedVectorType>(VecLoad->getType())->getElementType();
+  if (!all_of(Bndl, [VecElemTy](Instruction *I) {
+        return VecUtils::getElementType(I->getType()) == VecElemTy;
+      })) {
+    Ctx.revert();
+    return false;
+  }
+
+  auto *VecLoadI = cast<Instruction>(VecLoad);
+  BasicBlock::iterator WhereIt = std::next(VecLoadI->getIterator());
+  for (auto [Lane, OrigV] : VecUtils::enumerateLanes(Bndl)) {
+    auto *OrigLoad = cast<LoadInst>(OrigV);
+    if (OrigLoad->hasNUses(0))
+      continue;
+    Value *Unpacked =
+        VecUtils::unpack(VecLoad, OrigLoad->getType(), Lane, WhereIt);
+    OrigLoad->replaceAllUsesWith(Unpacked);
+  }
+
+  tryEraseDeadLoads(Bndl);
+
+  return acceptIfProfitable(Ctx, SB, CostBefore);
+}
+
+bool LoadStoreVec::isLegalLoadRun(ArrayRef<Instruction *> Run, Scheduler &Sched,
+                                  const Analyses &A) {
+  if (!VecUtils::areConsecutive<LoadInst, Instruction>(
+          Run, A.getScalarEvolution(), *DL))
+    return false;
+  // vectorizeLoads() replaces each original load's uses with an extract from
+  // the combined vector load, which needs every load's element type to
+  // exactly match (see VecUtils::unpack()). createVectorLoad() would combine
+  // mixed element types down to the narrowest one instead, which works for a
+  // load chain that only feeds a store, but not here.
+  // TODO: Support mixed-type top-level load chains.
+  Type *ElemTy = VecUtils::getElementType(Run[0]->getType());
+  if (!all_of(Run, [ElemTy](Instruction *I) {
+        return VecUtils::getElementType(I->getType()) == ElemTy;
+      }))
+    return false;
+  return canVectorize(Run, Sched).has_value();
+}
+
+ArrayRef<Instruction *>
+LoadStoreVec::findLegalLoadRun(ArrayRef<Instruction *> Bndl, unsigned Start,
+                               Scheduler &Sched, const Analyses &A) {
+  for (unsigned Len = Bndl.size() - Start; Len >= 2; --Len) {
+    ArrayRef<Instruction *> Run = Bndl.slice(Start, Len);
+    if (isLegalLoadRun(Run, Sched, A))
+      return Run;
+  }
+  return {};
+}
+
 bool LoadStoreVec::runOnRegion(Region &Rgn, const Analyses &A) {
   SmallVector<Instruction *, 8> Bndl(Rgn.getAux().begin(), Rgn.getAux().end());
   if (Bndl.size() < 2)
     return false;
   Function &F = *Bndl[0]->getParent()->getParent();
   DL = &F.getParent()->getDataLayout();
+
+  // SeedCollection only ever gives us a homogeneous seed slice: stores and
+  // loads are collected in separate passes over the BB, never mixed into one
+  // Aux (see SeedCollection::runOnFunction).
+  bool IsStoreKind = isa<StoreInst>(Bndl[0]);
+  assert(all_of(Bndl,
+                [&](Instruction *I) {
+                  return isa<StoreInst>(I) == IsStoreKind;
+                }) &&
+         "Expected a homogeneous seed slice!");
 
   // The seed chain may not be vectorizable as a single unit, e.g. because it
   // spans an address gap (SeedBundle::getSlice sorts by address but doesn't
@@ -296,16 +421,20 @@ bool LoadStoreVec::runOnRegion(Region &Rgn, const Analyses &A) {
   // Scheduler -- for a different, unrelated sub-run -- then dereferences it
   // and crashes. Sub-runs don't depend on each other's scheduling, so there's
   // no correctness reason to share a Scheduler across them; only the shrink
-  // search *within* one sub-run needs to reuse one (see findLegalStoreRun()).
+  // search *within* one sub-run needs to reuse one (see findLegalStoreRun()/
+  // findLegalLoadRun()).
   bool Change = false;
   for (unsigned Start = 0; Start + 1 < Bndl.size();) {
     Scheduler Sched(A.getAA(), F.getContext(), SchedDirection::BottomUp);
-    ArrayRef<Instruction *> Run = findLegalStoreRun(Bndl, Start, Sched, A);
+    ArrayRef<Instruction *> Run = IsStoreKind
+                                      ? findLegalStoreRun(Bndl, Start, Sched, A)
+                                      : findLegalLoadRun(Bndl, Start, Sched, A);
     if (Run.empty()) {
       ++Start;
       continue;
     }
-    Change |= vectorizeStores(Run, Rgn, Sched, A);
+    Change |= IsStoreKind ? vectorizeStores(Run, Rgn, Sched, A)
+                          : vectorizeLoads(Run, Rgn, Sched, A);
     Start += Run.size();
   }
   return Change;
