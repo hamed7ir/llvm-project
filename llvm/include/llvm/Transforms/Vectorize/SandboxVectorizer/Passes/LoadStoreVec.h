@@ -47,6 +47,25 @@ class LLVM_ABI LoadStoreVec final : public RegionPass {
   bool vectorizeStores(ArrayRef<Instruction *> Bndl, Region &Rgn,
                        Scheduler &Sched, const Analyses &A);
 
+  /// \Returns true if \p Run is a consecutive store chain that \p Sched can
+  /// schedule together. packOperands() can turn any operand kind into a
+  /// vector value, so this is purely an address/scheduling legality check,
+  /// not an eligibility one.
+  bool isLegalStoreRun(ArrayRef<Instruction *> Run, Scheduler &Sched,
+                       const Analyses &A);
+
+  /// \Returns the longest run of stores in \p Bndl starting at \p Start that
+  /// isLegalStoreRun() accepts, or an empty range if no run of length >= 2
+  /// qualifies.
+  /// NOTE: This only ever shrinks the candidate from the high end. A
+  /// successful multi-instruction Scheduler::trySchedule() call permanently
+  /// commits that exact set of instructions as one scheduled bundle, so
+  /// growing a bundle that already succeeded at a shorter length is not
+  /// something the scheduler supports.
+  ArrayRef<Instruction *> findLegalStoreRun(ArrayRef<Instruction *> Bndl,
+                                            unsigned Start, Scheduler &Sched,
+                                            const Analyses &A);
+
 public:
   LoadStoreVec(StringRef AuxArg) : RegionPass("load-store-vec") {
     assert(AuxArg.empty() && "This pass ignores aux arg!");

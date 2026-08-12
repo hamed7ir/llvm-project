@@ -466,6 +466,50 @@ define void @load_store_vec_constants_CFP_vector(ptr %ptr) {
   ret void
 }
 
+; A seed slice can contain an address gap (SeedBundle::getSlice sorts by
+; address but doesn't guarantee contiguity), so the whole chain doesn't
+; qualify as one unit here: [S0,S1] and [S5,S6] should each vectorize
+; independently instead of the whole thing bailing.
+;
+; This is also a regression test for a real crash: vectorizing [S0,S1] first
+; and then searching for a second run used to reuse the same Scheduler for
+; both, and Scheduler::ScheduleTopItOpt (an iterator with no erase-instr
+; awareness, unlike DependencyGraph) went dangling once [S0,S1]'s
+; instructions were erased, crashing the second run's own scheduling attempt.
+define void @load_store_vec_two_sub_runs(ptr %ptr) {
+; CHECK-LABEL: define void @load_store_vec_two_sub_runs(
+; CHECK-SAME: ptr [[PTR:%.*]]) {
+; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
+; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr i8, ptr [[PTR]], i32 1
+; CHECK-NEXT:    [[PTR5:%.*]] = getelementptr i8, ptr [[PTR]], i32 5
+; CHECK-NEXT:    [[PTR6:%.*]] = getelementptr i8, ptr [[PTR]], i32 6
+; CHECK-NEXT:    [[LD0:%.*]] = load i8, ptr [[PTR0]], align 1
+; CHECK-NEXT:    [[LD1:%.*]] = load i8, ptr [[PTR1]], align 1
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i8> poison, i8 [[LD0]], i32 0, !sandboxvec [[META19:![0-9]+]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i8> [[PACK]], i8 [[LD1]], i32 1, !sandboxvec [[META19]]
+; CHECK-NEXT:    [[LD5:%.*]] = load i8, ptr [[PTR5]], align 1
+; CHECK-NEXT:    [[LD6:%.*]] = load i8, ptr [[PTR6]], align 1
+; CHECK-NEXT:    [[PACK2:%.*]] = insertelement <2 x i8> poison, i8 [[LD5]], i32 0, !sandboxvec [[META19]]
+; CHECK-NEXT:    [[PACK3:%.*]] = insertelement <2 x i8> [[PACK2]], i8 [[LD6]], i32 1, !sandboxvec [[META19]]
+; CHECK-NEXT:    store <2 x i8> [[PACK1]], ptr [[PTR0]], align 1, !sandboxvec [[META19]]
+; CHECK-NEXT:    store <2 x i8> [[PACK3]], ptr [[PTR5]], align 1, !sandboxvec [[META19]]
+; CHECK-NEXT:    ret void
+;
+  %ptr0 = getelementptr i8, ptr %ptr, i32 0
+  %ptr1 = getelementptr i8, ptr %ptr, i32 1
+  %ptr5 = getelementptr i8, ptr %ptr, i32 5
+  %ptr6 = getelementptr i8, ptr %ptr, i32 6
+  %ld0 = load i8, ptr %ptr0
+  %ld1 = load i8, ptr %ptr1
+  %ld5 = load i8, ptr %ptr5
+  %ld6 = load i8, ptr %ptr6
+  store i8 %ld0, ptr %ptr0
+  store i8 %ld1, ptr %ptr1
+  store i8 %ld5, ptr %ptr5
+  store i8 %ld6, ptr %ptr6
+  ret void
+}
+
 ;.
 ; CHECK: [[META0]] = distinct !{!"sandboxregion"}
 ; CHECK: [[META1]] = distinct !{!"sandboxregion"}
@@ -486,4 +530,5 @@ define void @load_store_vec_constants_CFP_vector(ptr %ptr) {
 ; CHECK: [[META16]] = distinct !{!"sandboxregion"}
 ; CHECK: [[META17]] = distinct !{!"sandboxregion"}
 ; CHECK: [[META18]] = distinct !{!"sandboxregion"}
+; CHECK: [[META19]] = distinct !{!"sandboxregion"}
 ;.

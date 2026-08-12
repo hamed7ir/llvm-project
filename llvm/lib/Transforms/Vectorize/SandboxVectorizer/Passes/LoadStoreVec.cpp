@@ -255,14 +255,60 @@ bool LoadStoreVec::vectorizeStores(ArrayRef<Instruction *> Bndl, Region &Rgn,
   return acceptIfProfitable(Ctx, SB, CostBefore);
 }
 
+bool LoadStoreVec::isLegalStoreRun(ArrayRef<Instruction *> Run,
+                                   Scheduler &Sched, const Analyses &A) {
+  if (!VecUtils::areConsecutive<StoreInst, Instruction>(
+          Run, A.getScalarEvolution(), *DL))
+    return false;
+  return canVectorize(Run, Sched).has_value();
+}
+
+ArrayRef<Instruction *>
+LoadStoreVec::findLegalStoreRun(ArrayRef<Instruction *> Bndl, unsigned Start,
+                                Scheduler &Sched, const Analyses &A) {
+  for (unsigned Len = Bndl.size() - Start; Len >= 2; --Len) {
+    ArrayRef<Instruction *> Run = Bndl.slice(Start, Len);
+    if (isLegalStoreRun(Run, Sched, A))
+      return Run;
+  }
+  return {};
+}
+
 bool LoadStoreVec::runOnRegion(Region &Rgn, const Analyses &A) {
   SmallVector<Instruction *, 8> Bndl(Rgn.getAux().begin(), Rgn.getAux().end());
   if (Bndl.size() < 2)
     return false;
   Function &F = *Bndl[0]->getParent()->getParent();
   DL = &F.getParent()->getDataLayout();
-  Scheduler Sched(A.getAA(), F.getContext(), SchedDirection::BottomUp);
-  return vectorizeStores(Bndl, Rgn, Sched, A);
+
+  // The seed chain may not be vectorizable as a single unit, e.g. because it
+  // spans an address gap (SeedBundle::getSlice sorts by address but doesn't
+  // guarantee contiguity) or a sub-range fails to schedule. Rather than give
+  // up on the whole chain, vectorize the largest legal sub-runs we can find,
+  // in address order.
+  //
+  // Each sub-run's search and vectorization get their own fresh Scheduler:
+  // Scheduler::ScheduleTopItOpt is a plain BasicBlock::iterator with no
+  // erase-instruction awareness (unlike DependencyGraph, which does react to
+  // erasures), so once a sub-run is accepted and its instructions erased, a
+  // Scheduler that still points at one of them via ScheduleTopItOpt is left
+  // holding a dangling iterator. A later trySchedule() call on that same
+  // Scheduler -- for a different, unrelated sub-run -- then dereferences it
+  // and crashes. Sub-runs don't depend on each other's scheduling, so there's
+  // no correctness reason to share a Scheduler across them; only the shrink
+  // search *within* one sub-run needs to reuse one (see findLegalStoreRun()).
+  bool Change = false;
+  for (unsigned Start = 0; Start + 1 < Bndl.size();) {
+    Scheduler Sched(A.getAA(), F.getContext(), SchedDirection::BottomUp);
+    ArrayRef<Instruction *> Run = findLegalStoreRun(Bndl, Start, Sched, A);
+    if (Run.empty()) {
+      ++Start;
+      continue;
+    }
+    Change |= vectorizeStores(Run, Rgn, Sched, A);
+    Start += Run.size();
+  }
+  return Change;
 }
 
 } // namespace sandboxir
