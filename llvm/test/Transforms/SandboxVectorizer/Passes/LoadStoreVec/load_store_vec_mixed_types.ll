@@ -5,8 +5,13 @@
 define void @mixed_int_float(ptr %ptr0) {
 ; CHECK-LABEL: define void @mixed_int_float(
 ; CHECK-SAME: ptr [[PTR0:%.*]]) {
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <2 x i32>, ptr [[PTR0]], align 1, !sandboxvec [[META0:![0-9]+]]
-; CHECK-NEXT:    store <2 x i32> [[VECIINITL]], ptr [[PTR0]], align 1, !sandboxvec [[META0]]
+; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr inbounds i8, ptr [[PTR0]], i64 4
+; CHECK-NEXT:    [[LD0:%.*]] = load i32, ptr [[PTR0]], align 4
+; CHECK-NEXT:    [[LD1:%.*]] = load float, ptr [[PTR1]], align 4
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i32> poison, i32 [[LD0]], i32 0, !sandboxvec [[META0:![0-9]+]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast float [[LD1]] to i32, !sandboxvec [[META0]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i32> [[PACK]], i32 [[PACKCAST]], i32 1, !sandboxvec [[META0]]
+; CHECK-NEXT:    store <2 x i32> [[PACK1]], ptr [[PTR0]], align 1, !sandboxvec [[META0]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr1 = getelementptr inbounds i8, ptr %ptr0, i64 4
@@ -23,8 +28,19 @@ define void @mixed_int_float(ptr %ptr0) {
 define void @mixed_int_vector_float(ptr %ptr) {
 ; CHECK-LABEL: define void @mixed_int_vector_float(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <4 x half>, ptr [[PTR]], align 1, !sandboxvec [[META1:![0-9]+]]
-; CHECK-NEXT:    store <4 x half> [[VECIINITL]], ptr [[PTR]], align 1, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[PTR_4:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 4
+; CHECK-NEXT:    [[LD_0_3:%.*]] = load i32, ptr [[PTR]], align 4
+; CHECK-NEXT:    [[LD_4_7:%.*]] = load <2 x half>, ptr [[PTR_4]], align 4
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i32 [[LD_0_3]] to <2 x half>, !sandboxvec [[META1:![0-9]+]]
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x half> [[PACKCAST]], i32 0, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK1:%.*]] = insertelement <4 x half> poison, half [[VPACK]], i32 0, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = extractelement <2 x half> [[PACKCAST]], i32 1, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = insertelement <4 x half> [[VPACK1]], half [[VPACK2]], i32 1, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK4:%.*]] = extractelement <2 x half> [[LD_4_7]], i32 0, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK5:%.*]] = insertelement <4 x half> [[VPACK3]], half [[VPACK4]], i32 2, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK6:%.*]] = extractelement <2 x half> [[LD_4_7]], i32 1, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK7:%.*]] = insertelement <4 x half> [[VPACK5]], half [[VPACK6]], i32 3, !sandboxvec [[META1]]
+; CHECK-NEXT:    store <4 x half> [[VPACK7]], ptr [[PTR]], align 1, !sandboxvec [[META1]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr_4 = getelementptr inbounds i8, ptr %ptr, i64 4
@@ -41,8 +57,13 @@ define void @mixed_int_vector_float(ptr %ptr) {
 define void @mixed_int_pointer(ptr %ptr) {
 ; CHECK-LABEL: define void @mixed_int_pointer(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <2 x i64>, ptr [[PTR]], align 1, !sandboxvec [[META2:![0-9]+]]
-; CHECK-NEXT:    store <2 x i64> [[VECIINITL]], ptr [[PTR]], align 1, !sandboxvec [[META2]]
+; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
+; CHECK-NEXT:    [[LD_0_7:%.*]] = load i64, ptr [[PTR]], align 4
+; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i64> poison, i64 [[LD_0_7]], i32 0, !sandboxvec [[META2:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META2]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i64> [[PACK]], i64 [[PACKP2I]], i32 1, !sandboxvec [[META2]]
+; CHECK-NEXT:    store <2 x i64> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META2]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr_8 = getelementptr inbounds i8, ptr %ptr, i64 8
@@ -59,8 +80,14 @@ define void @mixed_int_pointer(ptr %ptr) {
 define void @mixed_dboule_pointer(ptr %ptr) {
 ; CHECK-LABEL: define void @mixed_dboule_pointer(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <2 x double>, ptr [[PTR]], align 1, !sandboxvec [[META3:![0-9]+]]
-; CHECK-NEXT:    store <2 x double> [[VECIINITL]], ptr [[PTR]], align 1, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
+; CHECK-NEXT:    [[LD_0_7:%.*]] = load double, ptr [[PTR]], align 8
+; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x double> poison, double [[LD_0_7]], i32 0, !sandboxvec [[META3:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i64 [[PACKP2I]] to double, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x double> [[PACK]], double [[PACKCAST]], i32 1, !sandboxvec [[META3]]
+; CHECK-NEXT:    store <2 x double> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META3]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr_8 = getelementptr inbounds i8, ptr %ptr, i64 8
@@ -83,8 +110,10 @@ define i32 @mixed_int_float_with_external_user_i32(ptr %ptr0) {
 ; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr inbounds i8, ptr [[PTR0]], i64 4
 ; CHECK-NEXT:    [[LD0:%.*]] = load i32, ptr [[PTR0]], align 4
 ; CHECK-NEXT:    [[LD1:%.*]] = load float, ptr [[PTR1]], align 4
-; CHECK-NEXT:    store i32 [[LD0]], ptr [[PTR0]], align 4, !sandboxvec [[META4:![0-9]+]]
-; CHECK-NEXT:    store float [[LD1]], ptr [[PTR1]], align 4, !sandboxvec [[META4]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i32> poison, i32 [[LD0]], i32 0, !sandboxvec [[META4:![0-9]+]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast float [[LD1]] to i32, !sandboxvec [[META4]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i32> [[PACK]], i32 [[PACKCAST]], i32 1, !sandboxvec [[META4]]
+; CHECK-NEXT:    store <2 x i32> [[PACK1]], ptr [[PTR0]], align 1, !sandboxvec [[META4]]
 ; CHECK-NEXT:    ret i32 [[LD0]]
 ;
   %ptr1 = getelementptr inbounds i8, ptr %ptr0, i64 4
@@ -103,8 +132,10 @@ define float @mixed_int_float_with_external_user_float(ptr %ptr0) {
 ; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr inbounds i8, ptr [[PTR0]], i64 4
 ; CHECK-NEXT:    [[LD0:%.*]] = load i32, ptr [[PTR0]], align 4
 ; CHECK-NEXT:    [[LD1:%.*]] = load float, ptr [[PTR1]], align 4
-; CHECK-NEXT:    store i32 [[LD0]], ptr [[PTR0]], align 4, !sandboxvec [[META5:![0-9]+]]
-; CHECK-NEXT:    store float [[LD1]], ptr [[PTR1]], align 4, !sandboxvec [[META5]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i32> poison, i32 [[LD0]], i32 0, !sandboxvec [[META5:![0-9]+]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast float [[LD1]] to i32, !sandboxvec [[META5]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i32> [[PACK]], i32 [[PACKCAST]], i32 1, !sandboxvec [[META5]]
+; CHECK-NEXT:    store <2 x i32> [[PACK1]], ptr [[PTR0]], align 1, !sandboxvec [[META5]]
 ; CHECK-NEXT:    ret float [[LD1]]
 ;
   %ptr1 = getelementptr inbounds i8, ptr %ptr0, i64 4
@@ -123,8 +154,10 @@ define i32 @mixed_int_float_with_two_external_users(ptr %ptr0, ptr %ptrExt) {
 ; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr inbounds i8, ptr [[PTR0]], i64 4
 ; CHECK-NEXT:    [[LD0:%.*]] = load i32, ptr [[PTR0]], align 4
 ; CHECK-NEXT:    [[LD1:%.*]] = load float, ptr [[PTR1]], align 4
-; CHECK-NEXT:    store i32 [[LD0]], ptr [[PTR0]], align 4, !sandboxvec [[META6:![0-9]+]]
-; CHECK-NEXT:    store float [[LD1]], ptr [[PTR1]], align 4, !sandboxvec [[META6]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i32> poison, i32 [[LD0]], i32 0, !sandboxvec [[META6:![0-9]+]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast float [[LD1]] to i32, !sandboxvec [[META6]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i32> [[PACK]], i32 [[PACKCAST]], i32 1, !sandboxvec [[META6]]
+; CHECK-NEXT:    store <2 x i32> [[PACK1]], ptr [[PTR0]], align 1, !sandboxvec [[META6]]
 ; CHECK-NEXT:    store float [[LD1]], ptr [[PTREXT]], align 4
 ; CHECK-NEXT:    ret i32 [[LD0]]
 ;
@@ -146,8 +179,16 @@ define i32 @mixed_int_vector_float_with_external_user_ptr(ptr %ptr) {
 ; CHECK-NEXT:    [[PTR_4:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 4
 ; CHECK-NEXT:    [[LD_0_3:%.*]] = load i32, ptr [[PTR]], align 4
 ; CHECK-NEXT:    [[LD_4_7:%.*]] = load <2 x half>, ptr [[PTR_4]], align 4
-; CHECK-NEXT:    store i32 [[LD_0_3]], ptr [[PTR]], align 4, !sandboxvec [[META7:![0-9]+]]
-; CHECK-NEXT:    store <2 x half> [[LD_4_7]], ptr [[PTR_4]], align 4, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i32 [[LD_0_3]] to <2 x half>, !sandboxvec [[META7:![0-9]+]]
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x half> [[PACKCAST]], i32 0, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[VPACK1:%.*]] = insertelement <4 x half> poison, half [[VPACK]], i32 0, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = extractelement <2 x half> [[PACKCAST]], i32 1, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = insertelement <4 x half> [[VPACK1]], half [[VPACK2]], i32 1, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[VPACK4:%.*]] = extractelement <2 x half> [[LD_4_7]], i32 0, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[VPACK5:%.*]] = insertelement <4 x half> [[VPACK3]], half [[VPACK4]], i32 2, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[VPACK6:%.*]] = extractelement <2 x half> [[LD_4_7]], i32 1, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[VPACK7:%.*]] = insertelement <4 x half> [[VPACK5]], half [[VPACK6]], i32 3, !sandboxvec [[META7]]
+; CHECK-NEXT:    store <4 x half> [[VPACK7]], ptr [[PTR]], align 1, !sandboxvec [[META7]]
 ; CHECK-NEXT:    ret i32 [[LD_0_3]]
 ;
   %ptr_4 = getelementptr inbounds i8, ptr %ptr, i64 4
@@ -166,8 +207,16 @@ define <2 x half> @mixed_int_vector_float_with_external_user_vec(ptr %ptr) {
 ; CHECK-NEXT:    [[PTR_4:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 4
 ; CHECK-NEXT:    [[LD_0_3:%.*]] = load i32, ptr [[PTR]], align 4
 ; CHECK-NEXT:    [[LD_4_7:%.*]] = load <2 x half>, ptr [[PTR_4]], align 4
-; CHECK-NEXT:    store i32 [[LD_0_3]], ptr [[PTR]], align 4, !sandboxvec [[META8:![0-9]+]]
-; CHECK-NEXT:    store <2 x half> [[LD_4_7]], ptr [[PTR_4]], align 4, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i32 [[LD_0_3]] to <2 x half>, !sandboxvec [[META8:![0-9]+]]
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x half> [[PACKCAST]], i32 0, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK1:%.*]] = insertelement <4 x half> poison, half [[VPACK]], i32 0, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = extractelement <2 x half> [[PACKCAST]], i32 1, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = insertelement <4 x half> [[VPACK1]], half [[VPACK2]], i32 1, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK4:%.*]] = extractelement <2 x half> [[LD_4_7]], i32 0, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK5:%.*]] = insertelement <4 x half> [[VPACK3]], half [[VPACK4]], i32 2, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK6:%.*]] = extractelement <2 x half> [[LD_4_7]], i32 1, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK7:%.*]] = insertelement <4 x half> [[VPACK5]], half [[VPACK6]], i32 3, !sandboxvec [[META8]]
+; CHECK-NEXT:    store <4 x half> [[VPACK7]], ptr [[PTR]], align 1, !sandboxvec [[META8]]
 ; CHECK-NEXT:    ret <2 x half> [[LD_4_7]]
 ;
   %ptr_4 = getelementptr inbounds i8, ptr %ptr, i64 4
@@ -186,8 +235,16 @@ define i32 @mixed_int_vector_float_with_two_external_users(ptr %ptr, ptr %ptrExt
 ; CHECK-NEXT:    [[PTR_4:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 4
 ; CHECK-NEXT:    [[LD_0_3:%.*]] = load i32, ptr [[PTR]], align 4
 ; CHECK-NEXT:    [[LD_4_7:%.*]] = load <2 x half>, ptr [[PTR_4]], align 4
-; CHECK-NEXT:    store i32 [[LD_0_3]], ptr [[PTR]], align 4, !sandboxvec [[META9:![0-9]+]]
-; CHECK-NEXT:    store <2 x half> [[LD_4_7]], ptr [[PTR_4]], align 4, !sandboxvec [[META9]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i32 [[LD_0_3]] to <2 x half>, !sandboxvec [[META9:![0-9]+]]
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x half> [[PACKCAST]], i32 0, !sandboxvec [[META9]]
+; CHECK-NEXT:    [[VPACK1:%.*]] = insertelement <4 x half> poison, half [[VPACK]], i32 0, !sandboxvec [[META9]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = extractelement <2 x half> [[PACKCAST]], i32 1, !sandboxvec [[META9]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = insertelement <4 x half> [[VPACK1]], half [[VPACK2]], i32 1, !sandboxvec [[META9]]
+; CHECK-NEXT:    [[VPACK4:%.*]] = extractelement <2 x half> [[LD_4_7]], i32 0, !sandboxvec [[META9]]
+; CHECK-NEXT:    [[VPACK5:%.*]] = insertelement <4 x half> [[VPACK3]], half [[VPACK4]], i32 2, !sandboxvec [[META9]]
+; CHECK-NEXT:    [[VPACK6:%.*]] = extractelement <2 x half> [[LD_4_7]], i32 1, !sandboxvec [[META9]]
+; CHECK-NEXT:    [[VPACK7:%.*]] = insertelement <4 x half> [[VPACK5]], half [[VPACK6]], i32 3, !sandboxvec [[META9]]
+; CHECK-NEXT:    store <4 x half> [[VPACK7]], ptr [[PTR]], align 1, !sandboxvec [[META9]]
 ; CHECK-NEXT:    store <2 x half> [[LD_4_7]], ptr [[PTREXT]], align 4
 ; CHECK-NEXT:    ret i32 [[LD_0_3]]
 ;
@@ -209,8 +266,10 @@ define i64 @mixed_int_pointer_with_external_user_int(ptr %ptr) {
 ; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
 ; CHECK-NEXT:    [[LD_0_7:%.*]] = load i64, ptr [[PTR]], align 4
 ; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
-; CHECK-NEXT:    store i64 [[LD_0_7]], ptr [[PTR]], align 4, !sandboxvec [[META10:![0-9]+]]
-; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTR_8]], align 8, !sandboxvec [[META10]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i64> poison, i64 [[LD_0_7]], i32 0, !sandboxvec [[META10:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META10]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i64> [[PACK]], i64 [[PACKP2I]], i32 1, !sandboxvec [[META10]]
+; CHECK-NEXT:    store <2 x i64> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META10]]
 ; CHECK-NEXT:    ret i64 [[LD_0_7]]
 ;
   %ptr_8 = getelementptr inbounds i8, ptr %ptr, i64 8
@@ -229,8 +288,10 @@ define ptr @mixed_int_pointer_with_external_user_ptr(ptr %ptr) {
 ; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
 ; CHECK-NEXT:    [[LD_0_7:%.*]] = load i64, ptr [[PTR]], align 4
 ; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
-; CHECK-NEXT:    store i64 [[LD_0_7]], ptr [[PTR]], align 4, !sandboxvec [[META11:![0-9]+]]
-; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTR_8]], align 8, !sandboxvec [[META11]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i64> poison, i64 [[LD_0_7]], i32 0, !sandboxvec [[META11:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META11]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i64> [[PACK]], i64 [[PACKP2I]], i32 1, !sandboxvec [[META11]]
+; CHECK-NEXT:    store <2 x i64> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META11]]
 ; CHECK-NEXT:    ret ptr [[LD_8_15]]
 ;
   %ptr_8 = getelementptr inbounds i8, ptr %ptr, i64 8
@@ -249,8 +310,10 @@ define ptr @mixed_int_pointer_with_two_external_users(ptr %ptr, ptr %ptrExt) {
 ; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
 ; CHECK-NEXT:    [[LD_0_7:%.*]] = load i64, ptr [[PTR]], align 4
 ; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
-; CHECK-NEXT:    store i64 [[LD_0_7]], ptr [[PTR]], align 4, !sandboxvec [[META12:![0-9]+]]
-; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTR_8]], align 8, !sandboxvec [[META12]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i64> poison, i64 [[LD_0_7]], i32 0, !sandboxvec [[META12:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META12]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i64> [[PACK]], i64 [[PACKP2I]], i32 1, !sandboxvec [[META12]]
+; CHECK-NEXT:    store <2 x i64> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META12]]
 ; CHECK-NEXT:    store i64 [[LD_0_7]], ptr [[PTREXT]], align 4
 ; CHECK-NEXT:    ret ptr [[LD_8_15]]
 ;
@@ -272,8 +335,11 @@ define double @mixed_dboule_pointer_with_external_user_double(ptr %ptr) {
 ; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
 ; CHECK-NEXT:    [[LD_0_7:%.*]] = load double, ptr [[PTR]], align 8
 ; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
-; CHECK-NEXT:    store double [[LD_0_7]], ptr [[PTR]], align 8, !sandboxvec [[META13:![0-9]+]]
-; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTR_8]], align 8, !sandboxvec [[META13]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x double> poison, double [[LD_0_7]], i32 0, !sandboxvec [[META13:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META13]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i64 [[PACKP2I]] to double, !sandboxvec [[META13]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x double> [[PACK]], double [[PACKCAST]], i32 1, !sandboxvec [[META13]]
+; CHECK-NEXT:    store <2 x double> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META13]]
 ; CHECK-NEXT:    ret double [[LD_0_7]]
 ;
   %ptr_8 = getelementptr inbounds i8, ptr %ptr, i64 8
@@ -292,8 +358,11 @@ define ptr @mixed_dboule_pointer_with_external_user_ptr(ptr %ptr) {
 ; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
 ; CHECK-NEXT:    [[LD_0_7:%.*]] = load double, ptr [[PTR]], align 8
 ; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
-; CHECK-NEXT:    store double [[LD_0_7]], ptr [[PTR]], align 8, !sandboxvec [[META14:![0-9]+]]
-; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTR_8]], align 8, !sandboxvec [[META14]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x double> poison, double [[LD_0_7]], i32 0, !sandboxvec [[META14:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META14]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i64 [[PACKP2I]] to double, !sandboxvec [[META14]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x double> [[PACK]], double [[PACKCAST]], i32 1, !sandboxvec [[META14]]
+; CHECK-NEXT:    store <2 x double> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META14]]
 ; CHECK-NEXT:    ret ptr [[LD_8_15]]
 ;
   %ptr_8 = getelementptr inbounds i8, ptr %ptr, i64 8
@@ -312,8 +381,11 @@ define double @mixed_dboule_pointer_with_two_external_users(ptr %ptr, ptr %ptrEx
 ; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
 ; CHECK-NEXT:    [[LD_0_7:%.*]] = load double, ptr [[PTR]], align 8
 ; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
-; CHECK-NEXT:    store double [[LD_0_7]], ptr [[PTR]], align 8, !sandboxvec [[META15:![0-9]+]]
-; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTR_8]], align 8, !sandboxvec [[META15]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x double> poison, double [[LD_0_7]], i32 0, !sandboxvec [[META15:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META15]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i64 [[PACKP2I]] to double, !sandboxvec [[META15]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x double> [[PACK]], double [[PACKCAST]], i32 1, !sandboxvec [[META15]]
+; CHECK-NEXT:    store <2 x double> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META15]]
 ; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTREXT]], align 8
 ; CHECK-NEXT:    ret double [[LD_0_7]]
 ;
@@ -335,8 +407,11 @@ define double @mixed_dboule_pointer_with_two_external_users_reverse(ptr %ptr, pt
 ; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
 ; CHECK-NEXT:    [[LD_0_7:%.*]] = load double, ptr [[PTR]], align 8
 ; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
-; CHECK-NEXT:    store double [[LD_0_7]], ptr [[PTR]], align 8, !sandboxvec [[META16:![0-9]+]]
-; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTR_8]], align 8, !sandboxvec [[META16]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x double> poison, double [[LD_0_7]], i32 0, !sandboxvec [[META16:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META16]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i64 [[PACKP2I]] to double, !sandboxvec [[META16]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x double> [[PACK]], double [[PACKCAST]], i32 1, !sandboxvec [[META16]]
+; CHECK-NEXT:    store <2 x double> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META16]]
 ; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTREXT]], align 8
 ; CHECK-NEXT:    ret double [[LD_0_7]]
 ;
@@ -358,8 +433,11 @@ define void @mixed_dboule_pointer_with_four_external_users(ptr %ptr, ptr %ptrExt
 ; CHECK-NEXT:    [[PTR_8:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 8
 ; CHECK-NEXT:    [[LD_0_7:%.*]] = load double, ptr [[PTR]], align 8
 ; CHECK-NEXT:    [[LD_8_15:%.*]] = load ptr, ptr [[PTR_8]], align 8
-; CHECK-NEXT:    store double [[LD_0_7]], ptr [[PTR]], align 8, !sandboxvec [[META17:![0-9]+]]
-; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTR_8]], align 8, !sandboxvec [[META17]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x double> poison, double [[LD_0_7]], i32 0, !sandboxvec [[META17:![0-9]+]]
+; CHECK-NEXT:    [[PACKP2I:%.*]] = ptrtoint ptr [[LD_8_15]] to i64, !sandboxvec [[META17]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i64 [[PACKP2I]] to double, !sandboxvec [[META17]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x double> [[PACK]], double [[PACKCAST]], i32 1, !sandboxvec [[META17]]
+; CHECK-NEXT:    store <2 x double> [[PACK1]], ptr [[PTR]], align 1, !sandboxvec [[META17]]
 ; CHECK-NEXT:    store double [[LD_0_7]], ptr [[PTREXT1]], align 8
 ; CHECK-NEXT:    store ptr [[LD_8_15]], ptr [[PTREXT2]], align 8
 ; CHECK-NEXT:    store double [[LD_0_7]], ptr [[PTREXT3]], align 8

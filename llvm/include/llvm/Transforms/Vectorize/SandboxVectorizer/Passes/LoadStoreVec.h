@@ -23,6 +23,7 @@ class DataLayout;
 
 namespace sandboxir {
 
+class Context;
 class Value;
 class Instruction;
 class Scheduler;
@@ -38,8 +39,11 @@ class LLVM_ABI LoadStoreVec final : public RegionPass {
   void tryEraseDeadInstrs(ArrayRef<Instruction *> Stores,
                           ArrayRef<Value *> Operands);
 
-  /// Tries to vectorize the store chain \p Bndl into a single vector store.
-  /// \Returns whether it succeeded.
+  /// Vectorizes the store chain \p Bndl by packing its stored values into a
+  /// single vector value and storing that instead. Direction-agnostic: it
+  /// doesn't matter whether a stored value is a load, a constant, or an
+  /// arbitrary SSA value, and mixing kinds within one chain is fine. \Returns
+  /// whether it succeeded.
   bool vectorizeStores(ArrayRef<Instruction *> Bndl, Region &Rgn,
                        Scheduler &Sched, const Analyses &A);
 
