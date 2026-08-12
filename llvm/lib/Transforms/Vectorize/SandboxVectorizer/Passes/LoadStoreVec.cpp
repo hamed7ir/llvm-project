@@ -52,16 +52,149 @@ void LoadStoreVec::tryEraseDeadInstrs(ArrayRef<Instruction *> Stores,
     SI->eraseFromParent();
   }
   for (auto *Op : Operands) {
-    if (auto *LI = dyn_cast<LoadInst>(Op)) {
-      if (auto *PtrI =
-              dyn_cast<Instruction>(cast<LoadInst>(LI)->getPointerOperand()))
-        DeadCandidates.insert(PtrI);
-      cast<LoadInst>(LI)->eraseFromParent();
-    }
+    // Unlike a load that only ever fed this store, a packed operand (see
+    // packOperands()) isn't necessarily single-use, so only erase it once
+    // its last use (the store we just erased above) is actually gone.
+    auto *LI = dyn_cast<LoadInst>(Op);
+    if (LI == nullptr || !LI->hasNUses(0))
+      continue;
+    if (auto *PtrI = dyn_cast<Instruction>(LI->getPointerOperand()))
+      DeadCandidates.insert(PtrI);
+    LI->eraseFromParent();
   }
   for (auto *PtrI : DeadCandidates)
     if (!PtrI->hasNUsesOrMore(1))
       PtrI->eraseFromParent();
+}
+
+/// \Returns the narrowest scalar element type across \p Operands, mirroring
+/// VecUtils::getCombinedVectorTypeFor() but for arbitrary Values rather than
+/// only Instructions: a store's operands can be Constants, Arguments, or any
+/// other Value, not just Instructions.
+static Type *getCombinedElementType(ArrayRef<Value *> Operands,
+                                    const DataLayout &DL) {
+  Type *MinElmTy = nullptr;
+  unsigned MinElmBits = std::numeric_limits<unsigned>::max();
+  for (Value *V : Operands) {
+    Type *ElmTy = VecUtils::getElementType(Utils::getExpectedType(V));
+    unsigned ElmBits = Utils::getNumBits(ElmTy, DL);
+    if (ElmBits < MinElmBits) {
+      MinElmBits = ElmBits;
+      MinElmTy = ElmTy;
+    }
+  }
+  return MinElmTy;
+}
+
+/// \Returns \p V (of type \p FromTy) reinterpreted as \p ToTy, which must be
+/// the same bit width. Chooses bitcast, ptrtoint, or inttoptr as needed: a
+/// plain bitcast can't convert between pointer and non-pointer types, and
+/// inttoptr requires an integer source, so a non-integer, non-pointer type
+/// (e.g. double) headed for a pointer-typed granularity goes through an
+/// intermediate same-width integer bitcast first.
+static Value *reinterpretSameWidth(Value *V, Type *FromTy, Type *ToTy,
+                                   const DataLayout &DL,
+                                   BasicBlock::iterator &WhereIt,
+                                   Context &Ctx) {
+  auto Track = [&](Value *NewV) {
+    if (!isa<Constant>(NewV))
+      WhereIt = std::next(cast<Instruction>(NewV)->getIterator());
+    return NewV;
+  };
+  if (FromTy->isPointerTy()) {
+    Type *IntTy = IntegerType::get(Ctx, Utils::getNumBits(FromTy, DL));
+    V = Track(PtrToIntInst::create(V, IntTy, WhereIt, Ctx, "PackP2I"));
+    FromTy = IntTy;
+  }
+  if (ToTy->isPointerTy()) {
+    if (!FromTy->isIntegerTy()) {
+      Type *IntTy = IntegerType::get(Ctx, Utils::getNumBits(FromTy, DL));
+      V = Track(BitCastInst::create(V, IntTy, WhereIt, Ctx, "PackToInt"));
+      FromTy = IntTy;
+    }
+    return Track(IntToPtrInst::create(V, ToTy, WhereIt, Ctx, "PackI2P"));
+  }
+  if (FromTy == ToTy)
+    return V;
+  return Track(BitCastInst::create(V, ToTy, WhereIt, Ctx, "PackCast"));
+}
+
+/// Packs \p Operands into a single vector value. Direction-agnostic: it
+/// doesn't matter whether an operand is a load, a constant, or an arbitrary
+/// SSA value, and mixing kinds is fine -- unlike an extractelement/
+/// insertelement pair, this never fails, so there's no legality check here.
+///
+/// Operands are combined at the granularity of their narrowest common scalar
+/// element type (the same granularity getCombinedVectorTypeFor() computes for
+/// a mixed-type chain); an operand wider than that granularity is first split
+/// into multiple lanes via a bitcast, matching how a vector-typed element is
+/// split into per-lane extracts below.
+static Value *packOperands(ArrayRef<Value *> Operands, const DataLayout &DL,
+                           BasicBlock *BB) {
+  Type *ElemTy = getCombinedElementType(Operands, DL);
+  unsigned ElemBits = Utils::getNumBits(ElemTy, DL);
+  Context &Ctx = Operands[0]->getContext();
+  BasicBlock::iterator WhereIt =
+      VecUtils::getInsertPointAfterInstrs(Operands, BB);
+
+  unsigned NumLanes = 0;
+  for (Value *Op : Operands)
+    NumLanes += Utils::getNumBits(Op, DL) / ElemBits;
+  Value *LastInsert = PoisonValue::get(VecUtils::getWideType(ElemTy, NumLanes));
+
+  unsigned InsertIdx = 0;
+  for (Value *Op : Operands) {
+    Value *Elm = Op;
+    Type *OpElemTy = VecUtils::getElementType(Utils::getExpectedType(Op));
+    // If Op's own granularity is coarser than ElemTy, split it into a vector
+    // of ElemTy-sized lanes first, so the logic below can extract them.
+    if (OpElemTy != ElemTy) {
+      unsigned OpBits = Utils::getNumBits(Op, DL);
+      if (OpBits == ElemBits) {
+        Elm = reinterpretSameWidth(Elm, OpElemTy, ElemTy, DL, WhereIt, Ctx);
+      } else {
+        // A pointer can't be bitcast to a narrower vector directly, but this
+        // is otherwise the same situation the vector-Elm case below handles:
+        // reinterpret at the ElemTy granularity, then extract each lane.
+        Type *SplitTy = VecUtils::getWideType(ElemTy, OpBits / ElemBits);
+        Elm = reinterpretSameWidth(Elm, OpElemTy, SplitTy, DL, WhereIt, Ctx);
+      }
+    }
+    // An element can be either scalar or vector at this point. We need to
+    // generate different IR for each case.
+    if (Elm->getType()->isVectorTy()) {
+      unsigned NumElms =
+          cast<FixedVectorType>(Elm->getType())->getNumElements();
+      for (auto ExtrLane : seq<int>(0, NumElms)) {
+        // We generate extract-insert pairs, for each lane in `Elm`.
+        Constant *ExtrLaneC =
+            ConstantInt::getSigned(Type::getInt32Ty(Ctx), ExtrLane);
+        // This may return a Constant if Elm is a Constant.
+        auto *ExtrI =
+            ExtractElementInst::create(Elm, ExtrLaneC, WhereIt, Ctx, "VPack");
+        if (!isa<Constant>(ExtrI))
+          WhereIt = std::next(cast<Instruction>(ExtrI)->getIterator());
+        Constant *InsertLaneC =
+            ConstantInt::getSigned(Type::getInt32Ty(Ctx), InsertIdx++);
+        // This may also return a Constant if ExtrI is a Constant.
+        auto *InsertI = InsertElementInst::create(
+            LastInsert, ExtrI, InsertLaneC, WhereIt, Ctx, "VPack");
+        LastInsert = InsertI;
+        if (!isa<Constant>(InsertI))
+          WhereIt = std::next(cast<Instruction>(LastInsert)->getIterator());
+      }
+    } else {
+      Constant *InsertLaneC =
+          ConstantInt::getSigned(Type::getInt32Ty(Ctx), InsertIdx++);
+      // This may be folded into a Constant if LastInsert is a Constant. In
+      // that case we only collect the last constant.
+      LastInsert = InsertElementInst::create(LastInsert, Elm, InsertLaneC,
+                                             WhereIt, Ctx, "Pack");
+      if (auto *NewI = dyn_cast<Instruction>(LastInsert))
+        WhereIt = std::next(NewI->getIterator());
+    }
+  }
+  return LastInsert;
 }
 
 /// Accepts the transaction if vectorizing was profitable, reverts it otherwise.
@@ -85,110 +218,30 @@ static bool acceptIfProfitable(Context &Ctx, const ScoreBoard &SB,
 
 bool LoadStoreVec::vectorizeStores(ArrayRef<Instruction *> Bndl, Region &Rgn,
                                    Scheduler &Sched, const Analyses &A) {
-  Function &F = *Bndl[0]->getParent()->getParent();
-  auto &Ctx = F.getContext();
+  // The seeds must form a consecutive, vectorizable store chain.
   if (!VecUtils::areConsecutive<StoreInst, Instruction>(
           Bndl, A.getScalarEvolution(), *DL))
     return false;
   if (!canVectorize(Bndl, Sched))
     return false;
 
-  const auto &SB = cast<RegionWithScore>(Rgn).getScoreboard();
-  InstructionCost CostBefore = SB.getAfterCost() - SB.getBeforeCost();
+  Function &F = *Bndl[0]->getParent()->getParent();
+  auto &Ctx = F.getContext();
 
   SmallVector<Value *, 4> Operands;
   Operands.reserve(Bndl.size());
-  for (auto *I : Bndl) {
-    auto *Op = cast<StoreInst>(I)->getValueOperand();
-    Operands.push_back(Op);
-  }
-  BasicBlock *BB = Bndl[0]->getParent();
-  // TODO: For now we only support load operands.
-  // TODO: For now we don't cross BBs.
-  // TODO: For now don't vectorize if the loads have external uses.
-  bool AllLoads = all_of(Operands, [BB](Value *V) {
-    auto *LI = dyn_cast<LoadInst>(V);
-    if (LI == nullptr)
-      return false;
-    // TODO: For now we don't cross BBs.
-    if (LI->getParent() != BB)
-      return false;
-    if (LI->hasNUsesOrMore(2))
-      return false;
-    return true;
-  });
-  bool AllConstants =
-      all_of(Operands, [](Value *V) { return isa<Constant>(V); });
-  if (!AllLoads && !AllConstants)
-    return false;
+  for (auto *I : Bndl)
+    Operands.push_back(cast<StoreInst>(I)->getValueOperand());
+
+  const auto &SB = cast<RegionWithScore>(Rgn).getScoreboard();
+  InstructionCost CostBefore = SB.getAfterCost() - SB.getBeforeCost();
 
   // Vectorizing mixed floats and integers with external uses may not be
   // profitable on some targets, so save state here.
   Ctx.save();
 
-  Value *VecOp = nullptr;
-  if (AllLoads) {
-    // TODO: Try to avoid the extra copy to an instruction vector.
-    SmallVector<Instruction *, 8> Loads;
-    Loads.reserve(Operands.size());
-    for (Value *Op : Operands)
-      Loads.push_back(cast<Instruction>(Op));
-
-    bool Consecutive = VecUtils::areConsecutive<LoadInst, Instruction>(
-        Loads, A.getScalarEvolution(), *DL);
-    if (!Consecutive) {
-      Ctx.accept();
-      return false;
-    }
-    if (!canVectorize(Loads, Sched)) {
-      Ctx.accept();
-      return false;
-    }
-
-    // Generate vector load.
-    Type *Ty = VecUtils::getCombinedVectorTypeFor(Bndl, *DL);
-    Value *LdPtr = cast<LoadInst>(Loads[0])->getPointerOperand();
-    // TODO: Compute alignment.
-    Align LdAlign(1);
-    auto LdWhereIt = std::next(VecUtils::getLowest(Loads)->getIterator());
-    VecOp = LoadInst::create(Ty, LdPtr, LdAlign, LdWhereIt, Ctx, "VecIinitL");
-  } else if (AllConstants) {
-    SmallVector<Constant *, 8> Constants;
-    Constants.reserve(Operands.size());
-    for (Value *Op : Operands) {
-      auto *COp = cast<Constant>(Op);
-      if (auto *AggrCOp = dyn_cast<ConstantAggregate>(COp)) {
-        // If the operand is a constant aggregate, then append all its elements.
-        for (Value *Elm : AggrCOp->operands())
-          Constants.push_back(cast<Constant>(Elm));
-      } else if (auto *SeqCOp = dyn_cast<ConstantDataSequential>(COp)) {
-        for (auto ElmIdx : seq<unsigned>(SeqCOp->getNumElements()))
-          Constants.push_back(SeqCOp->getElementAsConstant(ElmIdx));
-      } else if (auto *Zero = dyn_cast<ConstantAggregateZero>(COp)) {
-        auto *ZeroElm = Zero->getSequentialElement();
-        for ([[maybe_unused]] auto Cnt :
-             seq<unsigned>(Zero->getElementCount().getFixedValue()))
-          Constants.push_back(ZeroElm);
-      } else if (isa<ConstantInt>(COp) && isa<VectorType>(COp->getType())) {
-        auto *Elm = ConstantInt::get(Ctx, cast<ConstantInt>(COp)->getValue());
-        for ([[maybe_unused]] auto Cnt :
-             seq<unsigned>(cast<VectorType>(COp->getType())
-                               ->getElementCount()
-                               .getFixedValue()))
-          Constants.push_back(Elm);
-      } else if (isa<ConstantFP>(COp) && isa<VectorType>(COp->getType())) {
-        auto *Elm = ConstantFP::get(cast<ConstantFP>(COp)->getValue(), Ctx);
-        for ([[maybe_unused]] auto Cnt :
-             seq<unsigned>(cast<VectorType>(COp->getType())
-                               ->getElementCount()
-                               .getFixedValue()))
-          Constants.push_back(Elm);
-      } else {
-        Constants.push_back(COp);
-      }
-    }
-    VecOp = ConstantVector::get(Constants);
-  }
+  BasicBlock *BB = Bndl[0]->getParent();
+  Value *VecOp = packOperands(Operands, *DL, BB);
 
   // Generate vector store.
   Value *StPtr = cast<StoreInst>(Bndl[0])->getPointerOperand();

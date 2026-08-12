@@ -23,6 +23,7 @@ class DataLayout;
 
 namespace sandboxir {
 
+class Context;
 class Value;
 class Instruction;
 class Scheduler;

@@ -6,8 +6,19 @@ define void @load_store_vec_basic(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_basic(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <4 x i8>, ptr [[PTR0]], align 1, !sandboxvec [[META0:![0-9]+]]
-; CHECK-NEXT:    store <4 x i8> [[VECIINITL]], ptr [[PTR0]], align 1, !sandboxvec [[META0]]
+; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr i8, ptr [[PTR]], i32 1
+; CHECK-NEXT:    [[PTR2:%.*]] = getelementptr i8, ptr [[PTR]], i32 2
+; CHECK-NEXT:    [[LD0:%.*]] = load i8, ptr [[PTR0]], align 1
+; CHECK-NEXT:    [[LD1:%.*]] = load i8, ptr [[PTR1]], align 1
+; CHECK-NEXT:    [[LD2:%.*]] = load i16, ptr [[PTR2]], align 2
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <4 x i8> poison, i8 [[LD0]], i32 0, !sandboxvec [[META0:![0-9]+]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <4 x i8> [[PACK]], i8 [[LD1]], i32 1, !sandboxvec [[META0]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i16 [[LD2]] to <2 x i8>, !sandboxvec [[META0]]
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x i8> [[PACKCAST]], i32 0, !sandboxvec [[META0]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = insertelement <4 x i8> [[PACK1]], i8 [[VPACK]], i32 2, !sandboxvec [[META0]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = extractelement <2 x i8> [[PACKCAST]], i32 1, !sandboxvec [[META0]]
+; CHECK-NEXT:    [[VPACK4:%.*]] = insertelement <4 x i8> [[VPACK2]], i8 [[VPACK3]], i32 3, !sandboxvec [[META0]]
+; CHECK-NEXT:    store <4 x i8> [[VPACK4]], ptr [[PTR0]], align 1, !sandboxvec [[META0]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i8, ptr %ptr, i32 0
@@ -26,8 +37,16 @@ define void @load_store_vec_non_pow2(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_non_pow2(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <3 x i8>, ptr [[PTR0]], align 1, !sandboxvec [[META1:![0-9]+]]
-; CHECK-NEXT:    store <3 x i8> [[VECIINITL]], ptr [[PTR0]], align 1, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr i8, ptr [[PTR]], i32 1
+; CHECK-NEXT:    [[LD0:%.*]] = load i8, ptr [[PTR0]], align 1
+; CHECK-NEXT:    [[LD1:%.*]] = load i16, ptr [[PTR1]], align 2
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <3 x i8> poison, i8 [[LD0]], i32 0, !sandboxvec [[META1:![0-9]+]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i16 [[LD1]] to <2 x i8>, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x i8> [[PACKCAST]], i32 0, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK1:%.*]] = insertelement <3 x i8> [[PACK]], i8 [[VPACK]], i32 1, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = extractelement <2 x i8> [[PACKCAST]], i32 1, !sandboxvec [[META1]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = insertelement <3 x i8> [[VPACK1]], i8 [[VPACK2]], i32 2, !sandboxvec [[META1]]
+; CHECK-NEXT:    store <3 x i8> [[VPACK3]], ptr [[PTR0]], align 1, !sandboxvec [[META1]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i8, ptr %ptr, i32 0
@@ -43,8 +62,18 @@ define void @load_store_vec_vectorize_vectors(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_vectorize_vectors(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <4 x i8>, ptr [[PTR0]], align 1, !sandboxvec [[META2:![0-9]+]]
-; CHECK-NEXT:    store <4 x i8> [[VECIINITL]], ptr [[PTR0]], align 1, !sandboxvec [[META2]]
+; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr i8, ptr [[PTR]], i32 2
+; CHECK-NEXT:    [[LD0:%.*]] = load <2 x i8>, ptr [[PTR0]], align 2
+; CHECK-NEXT:    [[LD1:%.*]] = load <2 x i8>, ptr [[PTR1]], align 2
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x i8> [[LD0]], i32 0, !sandboxvec [[META2:![0-9]+]]
+; CHECK-NEXT:    [[VPACK1:%.*]] = insertelement <4 x i8> poison, i8 [[VPACK]], i32 0, !sandboxvec [[META2]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = extractelement <2 x i8> [[LD0]], i32 1, !sandboxvec [[META2]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = insertelement <4 x i8> [[VPACK1]], i8 [[VPACK2]], i32 1, !sandboxvec [[META2]]
+; CHECK-NEXT:    [[VPACK4:%.*]] = extractelement <2 x i8> [[LD1]], i32 0, !sandboxvec [[META2]]
+; CHECK-NEXT:    [[VPACK5:%.*]] = insertelement <4 x i8> [[VPACK3]], i8 [[VPACK4]], i32 2, !sandboxvec [[META2]]
+; CHECK-NEXT:    [[VPACK6:%.*]] = extractelement <2 x i8> [[LD1]], i32 1, !sandboxvec [[META2]]
+; CHECK-NEXT:    [[VPACK7:%.*]] = insertelement <4 x i8> [[VPACK5]], i8 [[VPACK6]], i32 3, !sandboxvec [[META2]]
+; CHECK-NEXT:    store <4 x i8> [[VPACK7]], ptr [[PTR0]], align 1, !sandboxvec [[META2]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i8, ptr %ptr, i32 0
@@ -60,8 +89,30 @@ define void @load_store_vec_vectorize_vectors_diff_types(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_vectorize_vectors_diff_types(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <8 x i8>, ptr [[PTR0]], align 1, !sandboxvec [[META3:![0-9]+]]
-; CHECK-NEXT:    store <8 x i8> [[VECIINITL]], ptr [[PTR0]], align 1, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr i8, ptr [[PTR]], i32 2
+; CHECK-NEXT:    [[PTR2:%.*]] = getelementptr i8, ptr [[PTR]], i32 4
+; CHECK-NEXT:    [[LD0:%.*]] = load i16, ptr [[PTR0]], align 2
+; CHECK-NEXT:    [[LD1:%.*]] = load <2 x i8>, ptr [[PTR1]], align 2
+; CHECK-NEXT:    [[LD2:%.*]] = load <2 x i16>, ptr [[PTR2]], align 4
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i16 [[LD0]] to <2 x i8>, !sandboxvec [[META3:![0-9]+]]
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x i8> [[PACKCAST]], i32 0, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK1:%.*]] = insertelement <8 x i8> poison, i8 [[VPACK]], i32 0, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = extractelement <2 x i8> [[PACKCAST]], i32 1, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = insertelement <8 x i8> [[VPACK1]], i8 [[VPACK2]], i32 1, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK4:%.*]] = extractelement <2 x i8> [[LD1]], i32 0, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK5:%.*]] = insertelement <8 x i8> [[VPACK3]], i8 [[VPACK4]], i32 2, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK6:%.*]] = extractelement <2 x i8> [[LD1]], i32 1, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK7:%.*]] = insertelement <8 x i8> [[VPACK5]], i8 [[VPACK6]], i32 3, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[PACKCAST8:%.*]] = bitcast <2 x i16> [[LD2]] to <4 x i8>, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK9:%.*]] = extractelement <4 x i8> [[PACKCAST8]], i32 0, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK10:%.*]] = insertelement <8 x i8> [[VPACK7]], i8 [[VPACK9]], i32 4, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK11:%.*]] = extractelement <4 x i8> [[PACKCAST8]], i32 1, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK12:%.*]] = insertelement <8 x i8> [[VPACK10]], i8 [[VPACK11]], i32 5, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK13:%.*]] = extractelement <4 x i8> [[PACKCAST8]], i32 2, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK14:%.*]] = insertelement <8 x i8> [[VPACK12]], i8 [[VPACK13]], i32 6, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK15:%.*]] = extractelement <4 x i8> [[PACKCAST8]], i32 3, !sandboxvec [[META3]]
+; CHECK-NEXT:    [[VPACK16:%.*]] = insertelement <8 x i8> [[VPACK14]], i8 [[VPACK15]], i32 7, !sandboxvec [[META3]]
+; CHECK-NEXT:    store <8 x i8> [[VPACK16]], ptr [[PTR0]], align 1, !sandboxvec [[META3]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i8, ptr %ptr, i32 0
@@ -122,8 +173,12 @@ define void @load_store_vec_same_types(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_same_types(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <2 x i8>, ptr [[PTR0]], align 1, !sandboxvec [[META6:![0-9]+]]
-; CHECK-NEXT:    store <2 x i8> [[VECIINITL]], ptr [[PTR0]], align 1, !sandboxvec [[META6]]
+; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr i8, ptr [[PTR]], i32 1
+; CHECK-NEXT:    [[LD0:%.*]] = load i8, ptr [[PTR0]], align 1
+; CHECK-NEXT:    [[LD1:%.*]] = load i8, ptr [[PTR1]], align 1
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i8> poison, i8 [[LD0]], i32 0, !sandboxvec [[META6:![0-9]+]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i8> [[PACK]], i8 [[LD1]], i32 1, !sandboxvec [[META6]]
+; CHECK-NEXT:    store <2 x i8> [[PACK1]], ptr [[PTR0]], align 1, !sandboxvec [[META6]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i8, ptr %ptr, i32 0
@@ -140,8 +195,13 @@ define void @load_store_vec_mixed_int_float(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_mixed_int_float(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i32, ptr [[PTR]], i32 0
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <2 x i32>, ptr [[PTR0]], align 1, !sandboxvec [[META7:![0-9]+]]
-; CHECK-NEXT:    store <2 x i32> [[VECIINITL]], ptr [[PTR0]], align 1, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr i32, ptr [[PTR]], i32 1
+; CHECK-NEXT:    [[LD0:%.*]] = load i32, ptr [[PTR0]], align 4
+; CHECK-NEXT:    [[LD1:%.*]] = load float, ptr [[PTR1]], align 4
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i32> poison, i32 [[LD0]], i32 0, !sandboxvec [[META7:![0-9]+]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast float [[LD1]] to i32, !sandboxvec [[META7]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i32> [[PACK]], i32 [[PACKCAST]], i32 1, !sandboxvec [[META7]]
+; CHECK-NEXT:    store <2 x i32> [[PACK1]], ptr [[PTR0]], align 1, !sandboxvec [[META7]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i32, ptr %ptr, i32 0
@@ -157,8 +217,16 @@ define void @load_store_vec_mixed_int_float_vectors(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_mixed_int_float_vectors(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i32, ptr [[PTR]], i32 0
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <3 x i32>, ptr [[PTR0]], align 1, !sandboxvec [[META8:![0-9]+]]
-; CHECK-NEXT:    store <3 x i32> [[VECIINITL]], ptr [[PTR0]], align 1, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr i32, ptr [[PTR]], i32 1
+; CHECK-NEXT:    [[LD0:%.*]] = load i32, ptr [[PTR0]], align 4
+; CHECK-NEXT:    [[LD1:%.*]] = load <2 x float>, ptr [[PTR1]], align 8
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <3 x i32> poison, i32 [[LD0]], i32 0, !sandboxvec [[META8:![0-9]+]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast <2 x float> [[LD1]] to <2 x i32>, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x i32> [[PACKCAST]], i32 0, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK1:%.*]] = insertelement <3 x i32> [[PACK]], i32 [[VPACK]], i32 1, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = extractelement <2 x i32> [[PACKCAST]], i32 1, !sandboxvec [[META8]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = insertelement <3 x i32> [[VPACK1]], i32 [[VPACK2]], i32 2, !sandboxvec [[META8]]
+; CHECK-NEXT:    store <3 x i32> [[VPACK3]], ptr [[PTR0]], align 1, !sandboxvec [[META8]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i32, ptr %ptr, i32 0
@@ -181,8 +249,9 @@ define ptr @load_store_vec_dont_cross_bbs(ptr %ptr) {
 ; CHECK-NEXT:    [[LD1:%.*]] = load i8, ptr [[PTR1]], align 1
 ; CHECK-NEXT:    br label %[[BB:.*]]
 ; CHECK:       [[BB]]:
-; CHECK-NEXT:    store i8 [[LD0]], ptr [[PTR0]], align 1, !sandboxvec [[META9:![0-9]+]]
-; CHECK-NEXT:    store i8 [[LD1]], ptr [[PTR1]], align 1, !sandboxvec [[META9]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i8> poison, i8 [[LD0]], i32 0, !sandboxvec [[META9:![0-9]+]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i8> [[PACK]], i8 [[LD1]], i32 1, !sandboxvec [[META9]]
+; CHECK-NEXT:    store <2 x i8> [[PACK1]], ptr [[PTR0]], align 1, !sandboxvec [[META9]]
 ; CHECK-NEXT:    ret ptr [[PTR1]]
 ;
 entry:
@@ -203,9 +272,13 @@ define void @load_store_vec_cleanup_geps(ptr %ptrA, ptr %ptrB) {
 ; CHECK-LABEL: define void @load_store_vec_cleanup_geps(
 ; CHECK-SAME: ptr [[PTRA:%.*]], ptr [[PTRB:%.*]]) {
 ; CHECK-NEXT:    [[PTRA0:%.*]] = getelementptr i8, ptr [[PTRA]], i32 0
+; CHECK-NEXT:    [[PTRA1:%.*]] = getelementptr i8, ptr [[PTRA]], i32 1
 ; CHECK-NEXT:    [[PTRB0:%.*]] = getelementptr i8, ptr [[PTRB]], i32 0
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <2 x i8>, ptr [[PTRA0]], align 1, !sandboxvec [[META10:![0-9]+]]
-; CHECK-NEXT:    store <2 x i8> [[VECIINITL]], ptr [[PTRB0]], align 1, !sandboxvec [[META10]]
+; CHECK-NEXT:    [[LD0:%.*]] = load i8, ptr [[PTRA0]], align 1
+; CHECK-NEXT:    [[LD1:%.*]] = load i8, ptr [[PTRA1]], align 1
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i8> poison, i8 [[LD0]], i32 0, !sandboxvec [[META10:![0-9]+]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i8> [[PACK]], i8 [[LD1]], i32 1, !sandboxvec [[META10]]
+; CHECK-NEXT:    store <2 x i8> [[PACK1]], ptr [[PTRB0]], align 1, !sandboxvec [[META10]]
 ; CHECK-NEXT:    ret void
 ;
   %ptrA0 = getelementptr i8, ptr %ptrA, i32 0
@@ -225,8 +298,11 @@ define ptr @load_store_vec_cleanup_gep_with_external_use(ptr %ptr) {
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
 ; CHECK-NEXT:    [[PTR1:%.*]] = getelementptr i8, ptr [[PTR]], i32 1
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <2 x i8>, ptr [[PTR0]], align 1, !sandboxvec [[META11:![0-9]+]]
-; CHECK-NEXT:    store <2 x i8> [[VECIINITL]], ptr [[PTR0]], align 1, !sandboxvec [[META11]]
+; CHECK-NEXT:    [[LD0:%.*]] = load i8, ptr [[PTR0]], align 1
+; CHECK-NEXT:    [[LD1:%.*]] = load i8, ptr [[PTR1]], align 1
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i8> poison, i8 [[LD0]], i32 0, !sandboxvec [[META11:![0-9]+]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i8> [[PACK]], i8 [[LD1]], i32 1, !sandboxvec [[META11]]
+; CHECK-NEXT:    store <2 x i8> [[PACK1]], ptr [[PTR0]], align 1, !sandboxvec [[META11]]
 ; CHECK-NEXT:    ret ptr [[PTR1]]
 ;
   %ptr0 = getelementptr i8, ptr %ptr, i32 0
@@ -243,12 +319,16 @@ define void @load_store_vec_schedule_stores_and_loads(ptr noalias %ptrA, ptr noa
 ; CHECK-LABEL: define void @load_store_vec_schedule_stores_and_loads(
 ; CHECK-SAME: ptr noalias [[PTRA:%.*]], ptr noalias [[PTRB:%.*]]) {
 ; CHECK-NEXT:    [[PTRA0:%.*]] = getelementptr i8, ptr [[PTRA]], i64 0
+; CHECK-NEXT:    [[PTRA1:%.*]] = getelementptr i8, ptr [[PTRA]], i64 1
 ; CHECK-NEXT:    [[PTRB0:%.*]] = getelementptr i8, ptr [[PTRB]], i64 0
 ; CHECK-NEXT:    [[PTRB1:%.*]] = getelementptr i8, ptr [[PTRB]], i64 1
-; CHECK-NEXT:    [[OTHER:%.*]] = load i8, ptr [[PTRB1]], align 1
-; CHECK-NEXT:    [[VECIINITL:%.*]] = load <2 x i8>, ptr [[PTRA0]], align 1, !sandboxvec [[META12:![0-9]+]]
+; CHECK-NEXT:    [[LD0:%.*]] = load i8, ptr [[PTRA0]], align 1
 ; CHECK-NEXT:    store i8 0, ptr [[PTRA0]], align 1
-; CHECK-NEXT:    store <2 x i8> [[VECIINITL]], ptr [[PTRB0]], align 1, !sandboxvec [[META12]]
+; CHECK-NEXT:    [[OTHER:%.*]] = load i8, ptr [[PTRB1]], align 1
+; CHECK-NEXT:    [[LD1:%.*]] = load i8, ptr [[PTRA1]], align 1
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <2 x i8> poison, i8 [[LD0]], i32 0, !sandboxvec [[META12:![0-9]+]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <2 x i8> [[PACK]], i8 [[LD1]], i32 1, !sandboxvec [[META12]]
+; CHECK-NEXT:    store <2 x i8> [[PACK1]], ptr [[PTRB0]], align 1, !sandboxvec [[META12]]
 ; CHECK-NEXT:    ret void
 ;
   %ptrA0 = getelementptr i8, ptr %ptrA, i64 0
@@ -276,9 +356,14 @@ define void @load_store_vec_external_uses(ptr %ptr) {
 ; CHECK-NEXT:    [[LD0:%.*]] = load i8, ptr [[PTR0]], align 1
 ; CHECK-NEXT:    [[LD1:%.*]] = load i8, ptr [[PTR1]], align 1
 ; CHECK-NEXT:    [[LD2:%.*]] = load i16, ptr [[PTR2]], align 2
-; CHECK-NEXT:    store i8 [[LD0]], ptr [[PTR0]], align 1, !sandboxvec [[META13:![0-9]+]]
-; CHECK-NEXT:    store i8 [[LD1]], ptr [[PTR1]], align 1, !sandboxvec [[META13]]
-; CHECK-NEXT:    store i16 [[LD2]], ptr [[PTR2]], align 2, !sandboxvec [[META14:![0-9]+]]
+; CHECK-NEXT:    [[PACK:%.*]] = insertelement <4 x i8> poison, i8 [[LD0]], i32 0, !sandboxvec [[META13:![0-9]+]]
+; CHECK-NEXT:    [[PACK1:%.*]] = insertelement <4 x i8> [[PACK]], i8 [[LD1]], i32 1, !sandboxvec [[META13]]
+; CHECK-NEXT:    [[PACKCAST:%.*]] = bitcast i16 [[LD2]] to <2 x i8>, !sandboxvec [[META13]]
+; CHECK-NEXT:    [[VPACK:%.*]] = extractelement <2 x i8> [[PACKCAST]], i32 0, !sandboxvec [[META13]]
+; CHECK-NEXT:    [[VPACK2:%.*]] = insertelement <4 x i8> [[PACK1]], i8 [[VPACK]], i32 2, !sandboxvec [[META13]]
+; CHECK-NEXT:    [[VPACK3:%.*]] = extractelement <2 x i8> [[PACKCAST]], i32 1, !sandboxvec [[META13]]
+; CHECK-NEXT:    [[VPACK4:%.*]] = insertelement <4 x i8> [[VPACK2]], i8 [[VPACK3]], i32 3, !sandboxvec [[META13]]
+; CHECK-NEXT:    store <4 x i8> [[VPACK4]], ptr [[PTR0]], align 1, !sandboxvec [[META13]]
 ; CHECK-NEXT:    [[EXT_USER:%.*]] = zext i8 [[LD1]] to i132
 ; CHECK-NEXT:    ret void
 ;
@@ -301,7 +386,7 @@ define void @load_store_vec_constants(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_constants(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
-; CHECK-NEXT:    store <3 x i8> <i8 42, i8 43, i8 44>, ptr [[PTR0]], align 1, !sandboxvec [[META15:![0-9]+]]
+; CHECK-NEXT:    store <4 x i8> <i8 42, i8 extractelement (<2 x i8> bitcast (<1 x i16> splat (i16 43) to <2 x i8>), i32 0), i8 extractelement (<2 x i8> bitcast (<1 x i16> splat (i16 43) to <2 x i8>), i32 1), i8 44>, ptr [[PTR0]], align 1, !sandboxvec [[META14:![0-9]+]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i8, ptr %ptr, i32 0
@@ -318,7 +403,7 @@ define void @load_store_vec_constants_CDS(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_constants_CDS(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
-; CHECK-NEXT:    store <4 x i8> <i8 0, i8 1, i8 2, i8 3>, ptr [[PTR0]], align 1, !sandboxvec [[META16:![0-9]+]]
+; CHECK-NEXT:    store <4 x i8> <i8 0, i8 1, i8 2, i8 3>, ptr [[PTR0]], align 1, !sandboxvec [[META15:![0-9]+]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i8, ptr %ptr, i32 0
@@ -335,7 +420,7 @@ define void @load_store_vec_constants_CDS_float(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_constants_CDS_float(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr float, ptr [[PTR]], i32 0
-; CHECK-NEXT:    store <8 x float> <float 1.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00>, ptr [[PTR0]], align 1, !sandboxvec [[META17:![0-9]+]]
+; CHECK-NEXT:    store <8 x float> <float 1.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00>, ptr [[PTR0]], align 1, !sandboxvec [[META16:![0-9]+]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr float, ptr %ptr, i32 0
@@ -352,7 +437,7 @@ define void @load_store_vec_constants_CI_vector(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_constants_CI_vector(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr i8, ptr [[PTR]], i32 0
-; CHECK-NEXT:    store <8 x i8> <i8 0, i8 1, i8 1, i8 2, i8 2, i8 2, i8 2, i8 2>, ptr [[PTR0]], align 1, !sandboxvec [[META18:![0-9]+]]
+; CHECK-NEXT:    store <8 x i8> <i8 0, i8 1, i8 1, i8 2, i8 2, i8 2, i8 2, i8 2>, ptr [[PTR0]], align 1, !sandboxvec [[META17:![0-9]+]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr i8, ptr %ptr, i32 0
@@ -369,7 +454,7 @@ define void @load_store_vec_constants_CFP_vector(ptr %ptr) {
 ; CHECK-LABEL: define void @load_store_vec_constants_CFP_vector(
 ; CHECK-SAME: ptr [[PTR:%.*]]) {
 ; CHECK-NEXT:    [[PTR0:%.*]] = getelementptr float, ptr [[PTR]], i32 0
-; CHECK-NEXT:    store <8 x float> <float 1.000000e+00, float 2.000000e+00, float 2.000000e+00, float 3.000000e+00, float 3.000000e+00, float 3.000000e+00, float 3.000000e+00, float 3.000000e+00>, ptr [[PTR0]], align 1, !sandboxvec [[META19:![0-9]+]]
+; CHECK-NEXT:    store <8 x float> <float 1.000000e+00, float 2.000000e+00, float 2.000000e+00, float 3.000000e+00, float 3.000000e+00, float 3.000000e+00, float 3.000000e+00, float 3.000000e+00>, ptr [[PTR0]], align 1, !sandboxvec [[META18:![0-9]+]]
 ; CHECK-NEXT:    ret void
 ;
   %ptr0 = getelementptr float, ptr %ptr, i32 0
@@ -401,5 +486,4 @@ define void @load_store_vec_constants_CFP_vector(ptr %ptr) {
 ; CHECK: [[META16]] = distinct !{!"sandboxregion"}
 ; CHECK: [[META17]] = distinct !{!"sandboxregion"}
 ; CHECK: [[META18]] = distinct !{!"sandboxregion"}
-; CHECK: [[META19]] = distinct !{!"sandboxregion"}
 ;.
