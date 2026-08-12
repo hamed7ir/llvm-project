@@ -33,6 +33,7 @@
 namespace llvm {
 
 class GlobalVariable;
+class MachineBasicBlock;
 class SPIRVSubtarget;
 
 /// AsmPrinter handler that emits NonSemantic.Shader.DebugInfo.100 (NSDI)
@@ -92,6 +93,11 @@ class SPIRVNonSemanticDebugHandler : public DebugHandlerBase {
   // DISubprogram nodes that are definitions, collected in beginModule() for
   // DebugFunction emission.
   SmallVector<const DISubprogram *> SubprogramDefinitions;
+
+  // Distinct DILocations from instruction !dbg attachments and debug program
+  // records (#dbg_declare, #dbg_value, #dbg_assign, #dbg_label), collected in
+  // beginModule() for DebugLine operand pre-emission.
+  SmallVector<const DILocation *> UniqueDebugLocations;
 
   struct GlobalVariableDebugInfo {
     const DIExpression *Expr = nullptr;
@@ -167,6 +173,22 @@ class SPIRVNonSemanticDebugHandler : public DebugHandlerBase {
 
   bool DebugFunctionDefinitionEmitted = false;
 
+  // DebugLine per-block running state (Option A). The file component is keyed
+  // on the resolved DebugSource register (content-deduped by path), not the
+  // DIFile* node, matching SPIRV-LLVM-Translator transLocationInfo which
+  // compares interned path strings. Reset at every basic block boundary.
+  struct DebugLineState {
+    MCRegister SrcReg;
+    unsigned Line;
+    unsigned Col;
+  };
+  const MachineBasicBlock *CurLineMBB = nullptr;
+  std::optional<DebugLineState> CurLineState;
+
+  // True when the current function should emit DebugLine/DebugNoLine: it has a
+  // defining DISubprogram and is not a backend service function.
+  bool EmitDebugLineForCurrentFn = false;
+
 public:
   explicit SPIRVNonSemanticDebugHandler(AsmPrinter &AP);
 
@@ -231,6 +253,16 @@ private:
                                    SPIRV::ModuleAnalysisInfo &MAI);
 
   void resetPerFunctionDebugState();
+
+  // Clear the active DebugLine coordinates (CurLineState). CurLineMBB is
+  // tracked separately because it outlives an open line within a block.
+  void clearCurLineState();
+
+  // Emit DebugLine / DebugNoLine for \p MI from its DebugLoc, comparing against
+  // the running per-block state. Called from beginInstruction(). All operands
+  // (line/column OpConstants and DebugSource) are pre-emitted module-scope, so
+  // this only performs cache lookups plus the inline OpExtInst emission.
+  void emitDebugLineForInstruction(const MachineInstr *MI);
   void preparePerFunctionDebug(const MachineFunction *MF);
   void tryEmitDebugFunctionDefinition(SPIRV::ModuleAnalysisInfo &MAI);
 
